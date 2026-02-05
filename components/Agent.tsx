@@ -28,6 +28,7 @@ const Agent = ({
     feedbackId,
     type,
     questions,
+    resumeData,
 }: AgentProps) => {
     const router = useRouter();
     const [callStatus, setCallStatus] = useState<CallStatus>(CallStatus.INACTIVE);
@@ -119,6 +120,20 @@ const Agent = ({
 
         try {
             if (type === "generate") {
+                // Prepare resume context for workflow
+                let systemPromptAddition = "";
+                if (resumeData) {
+                    systemPromptAddition = `
+
+CANDIDATE RESUME INFORMATION (Use this to tailor questions):
+- Skills: ${resumeData.skills.slice(0, 10).join(", ")}
+- Experience: ${resumeData.experience.slice(0, 2).join(" | ")}
+- Education: ${resumeData.education.slice(0, 1).join(" | ")}
+${resumeData.email ? `- Email: ${resumeData.email}` : ""}
+
+Based on the above information, ask interview questions that specifically relate to their skills and experience. Reference their skills directly in your questions.`;
+                }
+
                 await vapi.start(
                     undefined,
                     undefined,
@@ -128,6 +143,8 @@ const Agent = ({
                         variableValues: {
                             username: userName,
                             userid: userId,
+                            resumeContext: systemPromptAddition,
+                            userSkills: resumeData?.skills.slice(0, 5).join(", ") || "",
                         },
                     }
                 );
@@ -139,7 +156,63 @@ const Agent = ({
                         .join("\n");
                 }
 
-                await vapi.start(interviewer, {
+                // Create dynamic system prompt with resume context
+                let systemPrompt = `You are a professional job interviewer conducting a real-time voice interview with a candidate. Your goal is to assess their qualifications, motivation, and fit for the role.
+
+Interview Guidelines:
+Follow the structured question flow:
+${formattedQuestions}
+
+Engage naturally & react appropriately:
+Listen actively to responses and acknowledge them before moving forward.
+Ask brief follow-up questions if a response is vague or requires more detail.
+Keep the conversation flowing smoothly while maintaining control.
+Be professional, yet warm and welcoming:
+
+Use official yet friendly language.
+Keep responses concise and to the point (like in a real voice interview).
+Avoid robotic phrasing—sound natural and conversational.
+Answer the candidate's questions professionally:
+
+If asked about the role, company, or expectations, provide a clear and relevant answer.
+If unsure, redirect the candidate to HR for more details.
+
+Conclude the interview properly:
+Thank the candidate for their time.
+Inform them that the company will reach out soon with feedback.
+End the conversation on a polite and positive note.
+
+- Be sure to be professional and polite.
+- Keep all your responses short and simple. Use official language, but be kind and welcoming.
+- This is a voice conversation, so keep your responses short, like in a real conversation. Don't ramble for too long.`;
+
+                // Add resume context if available
+                if (resumeData) {
+                    systemPrompt += `
+
+CANDIDATE BACKGROUND (Reference in your interview):
+- Key Skills: ${resumeData.skills.slice(0, 5).join(", ")}
+- Experience Highlights: ${resumeData.experience.slice(0, 2).join(" | ")}
+- Education: ${resumeData.education.slice(0, 1).join(" | ")}
+
+Use this information to ask follow-up questions about their specific technologies and experiences.`;
+                }
+
+                // Create dynamic assistant with resume-aware system prompt
+                const dynamicAssistant: any = {
+                    ...interviewer,
+                    model: {
+                        ...interviewer.model,
+                        messages: [
+                            {
+                                role: "system",
+                                content: systemPrompt,
+                            },
+                        ],
+                    },
+                };
+
+                await vapi.start(dynamicAssistant, {
                     variableValues: {
                         questions: formattedQuestions,
                     },
@@ -160,6 +233,36 @@ const Agent = ({
 
     return (
         <>
+            {resumeData && (
+                <div className="mb-6 p-4 card-border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <h4 className="font-semibold text-sm mb-2">Resume Context Loaded</h4>
+                            <p className="text-xs text-gray-600 mb-3">File: {resumeData.fileName}</p>
+                            <div className="flex flex-wrap gap-2">
+                                {resumeData.skills.slice(0, 5).map((skill) => (
+                                    <span
+                                        key={skill}
+                                        className="px-2 py-1 bg-blue-200 text-blue-800 rounded text-xs font-medium"
+                                    >
+                                        {skill}
+                                    </span>
+                                ))}
+                                {resumeData.skills.length > 5 && (
+                                    <span className="px-2 py-1 bg-gray-200 text-gray-800 rounded text-xs font-medium">
+                                        +{resumeData.skills.length - 5} more
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <span className="inline-block px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
+                                ATS: {resumeData.atsScore}%
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className="call-view">
                 <div className="card-interviewer">
                     <div className="avatar">

@@ -54,6 +54,17 @@ interface AgentProps {
   feedbackId?: string;
   type: "generate" | "interview";
   questions?: string[];
+  resumeData?: {
+    fileName: string;
+    skills: string[];
+    experience: string[];
+    education: string[];
+    email?: string;
+    phone?: string;
+    isATSFriendly: boolean;
+    atsScore: number;
+    suggestions: string[];
+  };
 }
 
 interface RouteParams {
